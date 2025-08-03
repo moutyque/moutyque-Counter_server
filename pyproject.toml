@@ -1,16 +1,21 @@
-[project]
-name = "counter-server"
+[tool.poetry]
+name = "event-receiver"
 version = "0.1.0"
-description = ""
-authors = [
-    {name = "Quentin MOUTY",email = "quentin.mouty@ovhcloud.com"}
-]
+description = "Python app to receive fighter events through API"
+authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-]
 
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.104.1"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+pydantic = "^2.5.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+httpx = "^0.25.2"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
