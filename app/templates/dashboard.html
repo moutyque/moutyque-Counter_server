@@ -31,7 +31,46 @@
             width: 12px;
             height: 12px;
             border-radius: 50%;
+        }
+        .status-started {
             background-color: #4CAF50;
+        }
+        .status-stopped {
+            background-color: #f44336;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.3s;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-start {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-stop {
+            background-color: #f44336;
+            color: white;
+        }
+        .btn-reset {
+            background-color: #ff9800;
+            color: white;
+        }
+        .btn-refresh {
+            background-color: #2196F3;
+            color: white;
         }
         .stats-grid {
             display: grid;
@@ -52,29 +91,25 @@
         .blue-fighter {
             background-color: #2196F3;
         }
-        .stat-number {
-            font-size: 2.5em;
-            margin: 10px 0;
+        .total-events {
+            grid-column: 1 / -1;
+            background-color: #9C27B0;
         }
-        .stat-label {
-            font-size: 1.2em;
-        }
-        .refresh-btn {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .refresh-btn:hover {
-            background-color: #45a049;
-        }
-        .last-updated {
-            color: #666;
-            font-size: 0.9em;
+        .message {
             margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
     </style>
 </head>
@@ -83,72 +118,138 @@
     <h1>Fighter Events Dashboard</h1>
 
     <div class="card">
-        <h2>System Health</h2>
+        <h2>System Status</h2>
         <div class="health-status">
-            <div class="status-indicator" id="healthIndicator"></div>
-            <span id="healthStatus">Checking...</span>
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span id="systemStatus">Loading...</span>
         </div>
-        <div class="last-updated" id="lastUpdated"></div>
+        <div class="controls">
+            <button class="btn btn-start" id="startBtn" onclick="controlSystem('start')">Start</button>
+            <button class="btn btn-stop" id="stopBtn" onclick="controlSystem('stop')">Stop</button>
+            <button class="btn btn-reset" id="resetBtn" onclick="controlSystem('reset')">Reset</button>
+            <button class="btn btn-refresh" onclick="refreshStats()">Manual Refresh</button>
+        </div>
+        <div class="message" id="messageDiv"></div>
     </div>
 
     <div class="card">
         <h2>Event Statistics</h2>
-        <button class="refresh-btn" onclick="refreshData()">Refresh Data</button>
         <div class="stats-grid">
             <div class="stat-card red-fighter">
-                <div class="stat-number" id="redCount">0</div>
-                <div class="stat-label">Red Fighter Events</div>
+                <h3>Red Fighter</h3>
+                <p id="redCount">0</p>
             </div>
             <div class="stat-card blue-fighter">
-                <div class="stat-number" id="blueCount">0</div>
-                <div class="stat-label">Blue Fighter Events</div>
+                <h3>Blue Fighter</h3>
+                <p id="blueCount">0</p>
+            </div>
+            <div class="stat-card total-events">
+                <h3>Total Events</h3>
+                <p id="totalCount">0</p>
             </div>
         </div>
-        <div class="last-updated" id="statsUpdated"></div>
     </div>
 </div>
 
 <script>
-    async function fetchHealth() {
-        try {
-            const response = await fetch('/health');
-            const data = await response.json();
+    let currentState = 'stopped';
 
-            document.getElementById('healthStatus').textContent =
-                `Status: ${data.status} (${data.timestamp})`;
-            document.getElementById('healthIndicator').style.backgroundColor = '#4CAF50';
-            document.getElementById('lastUpdated').textContent =
-                `Last updated: ${new Date().toLocaleString()}`;
-        } catch (error) {
-            document.getElementById('healthStatus').textContent = 'Status: Error - Cannot connect';
-            document.getElementById('healthIndicator').style.backgroundColor = '#f44336';
-            document.getElementById('lastUpdated').textContent =
-                `Last updated: ${new Date().toLocaleString()} (Error)`;
-        }
-    }
-
-    async function fetchStats() {
+    async function refreshStats() {
         try {
             const response = await fetch('/stats');
             const data = await response.json();
 
+            // Update counters
             document.getElementById('redCount').textContent = data.red_count;
             document.getElementById('blueCount').textContent = data.blue_count;
-            document.getElementById('statsUpdated').textContent =
-                `Last updated: ${new Date().toLocaleString()}`;
+            document.getElementById('totalCount').textContent = data.total_count;
+
+            // Update system status
+            currentState = data.system_state;
+            updateSystemStatus(data.system_state);
+            updateButtonStates();
+
         } catch (error) {
             console.error('Error fetching stats:', error);
+            showMessage('Error fetching data', 'error');
         }
     }
 
-    function refreshData() {
-        fetchHealth();
-        fetchStats();
+    function updateSystemStatus(state) {
+        const statusElement = document.getElementById('systemStatus');
+        const indicatorElement = document.getElementById('statusIndicator');
+
+        if (state === 'started') {
+            statusElement.textContent = 'System Started - Counting Events';
+            indicatorElement.className = 'status-indicator status-started';
+        } else {
+            statusElement.textContent = 'System Stopped - Not Counting Events';
+            indicatorElement.className = 'status-indicator status-stopped';
+        }
     }
 
-    // Initial load and auto-refresh every 5 seconds
-    refreshData();
-    setInterval(refreshData, 5000);
+    function updateButtonStates() {
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        if (currentState === 'started') {
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            resetBtn.disabled = true;
+        } else {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            resetBtn.disabled = false;
+        }
+    }
+
+    async function controlSystem(action) {
+        try {
+            const response = await fetch(`/${action}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                currentState = data.system_state;
+                updateSystemStatus(data.system_state);
+                updateButtonStates();
+                showMessage(data.message, 'success');
+
+                // Refresh stats after successful action
+                setTimeout(refreshStats, 500);
+            } else {
+                showMessage(data.detail || 'Operation failed', 'error');
+            }
+
+        } catch (error) {
+            console.error(`Error ${action}:`, error);
+            showMessage(`Error performing ${action}`, 'error');
+        }
+    }
+
+    function showMessage(message, type) {
+        const messageDiv = document.getElementById('messageDiv');
+        messageDiv.textContent = message;
+        messageDiv.className = `message ${type}`;
+        messageDiv.style.display = 'block';
+
+        // Hide message after 3 seconds
+        setTimeout(() => {
+            messageDiv.style.display = 'none';
+        }, 3000);
+    }
+
+    // Auto-refresh every 5 seconds
+    setInterval(refreshStats, 5000);
+
+    // Initial load
+    refreshStats();
 </script>
 </body>
 </html>
