@@ -1,3 +1,6 @@
+import platform
+import socket
+import subprocess
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -58,6 +61,83 @@ class StateResponse(BaseModel):
     system_state: str
     message: str
 
+network_info = None  # Will be set on startup
+def get_private_ip():
+    """Get the private IP address of the current machine"""
+    try:
+        # Method 1: Connect to a remote address to determine local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            # Connect to Google DNS - doesn't actually send data
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            print(f"Local addr {ip}")
+            return ip
+    except Exception:
+        try:
+            # Method 2: Get hostname and resolve it
+            hostname = socket.gethostname()
+            ip = socket.gethostbyname(hostname)
+            if ip.startswith("127."):
+                raise Exception("Got localhost")
+            return ip
+        except Exception:
+            try:
+                # Method 3: Platform-specific commands
+                if platform.system() == "Darwin":  # macOS
+                    result = subprocess.run(
+                        ["ifconfig", "en0"],
+                        capture_output=True,
+                        text=True
+                    )
+                    for line in result.stdout.split('\n'):
+                        if 'inet ' in line and 'broadcast' in line:
+                            return line.split()[1]
+                elif platform.system() == "Linux":
+                    result = subprocess.run(
+                        ["hostname", "-I"],
+                        capture_output=True,
+                        text=True
+                    )
+                    return result.stdout.strip().split()[0]
+                elif platform.system() == "Windows":
+                    result = subprocess.run(
+                        ["ipconfig"],
+                        capture_output=True,
+                        text=True
+                    )
+                    lines = result.stdout.split('\n')
+                    for i, line in enumerate(lines):
+                        if 'IPv4 Address' in line or 'IP Address' in line:
+                            return line.split(':')[-1].strip()
+            except Exception:
+                pass
+            return "Unable to determine IP"
+
+# Initialize network info once at startup
+@app.on_event("startup")
+async def startup_event():
+    global network_info
+    network_info = NetworkInfo(
+        private_ip=get_private_ip(),
+        hostname=socket.gethostname(),
+        port=8000
+    )
+    print(f"🚀 Server starting up...")
+    print(f"🌐 Private IP: {network_info.private_ip}")
+    print(f"🏠 Hostname: {network_info.hostname}")
+    print(f"🔗 Event endpoint: http://{network_info.private_ip}:8000/event")
+    print(f"📊 Dashboard: http://{network_info.private_ip}:8000/")
+
+class NetworkInfo(BaseModel):
+    private_ip: str
+    hostname: str
+    port: int = 8000
+
+class StatsResponse(BaseModel):
+    red_count: int
+    blue_count: int
+    total_count: int
+    system_state: str
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
@@ -150,3 +230,7 @@ async def reset_system():
         system_state=system_state.value,
         message="Event counters reset successfully"
     )
+
+@app.get("/network-info", response_model=NetworkInfo)
+async def get_network_info():
+    return network_info

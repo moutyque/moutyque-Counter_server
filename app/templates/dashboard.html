@@ -32,12 +32,7 @@
             height: 12px;
             border-radius: 50%;
         }
-        .status-started {
-            background-color: #4CAF50;
-        }
-        .status-stopped {
-            background-color: #f44336;
-        }
+
         .controls {
             display: flex;
             gap: 10px;
@@ -101,21 +96,39 @@
             border-radius: 4px;
             display: none;
         }
-        .message.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+        .highlight {
+            font-weight: bold;
+            color: #2196F3;
+            background: rgba(33, 150, 243, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
         }
-        .message.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
+
     </style>
 </head>
 <body>
 <div class="container">
     <h1>Fighter Events Dashboard</h1>
+    <div class="info-card">
+        <h3>📡 Network Information</h3>
+        <div class="info-row">
+            <span class="label">Private IP:</span>
+            <span id="privateIp">Loading...</span>
+        </div>
+        <div class="info-row">
+            <span class="label">Hostname:</span>
+            <span id="hostname">Loading...</span>
+        </div>
+        <div class="info-row">
+            <span class="label">Port:</span>
+            <span id="port">Loading...</span>
+        </div>
+        <div class="info-row">
+            <span class="label">Base URL:</span>
+            <span id="baseUrl" class="highlight">Loading...</span>
+            <button onclick="copyToClipboard('baseUrl')" class="copy-btn" title="Copy to clipboard">📋</button>
+        </div>
+    </div>
 
     <div class="card">
         <h2>System Status</h2>
@@ -153,27 +166,66 @@
 
 <script>
     let currentState = 'stopped';
+    let networkInfoLoaded = false;
+
+    async function loadNetworkInfo() {
+        if (networkInfoLoaded) return;
+
+        try {
+            const response = await fetch('/network-info');
+            const networkInfo = await response.json();
+
+            // Calculate base URL
+            const baseUrl = `http://${networkInfo.private_ip}:${networkInfo.port}`;
+
+            // Update network info display
+            document.getElementById('privateIp').textContent = networkInfo.private_ip;
+            document.getElementById('hostname').textContent = networkInfo.hostname;
+            document.getElementById('port').textContent = networkInfo.port;
+            document.getElementById('baseUrl').textContent = baseUrl;
+
+            // Update API URLs
+            document.getElementById('eventUrl').textContent = `${baseUrl}/event`;
+            document.getElementById('healthUrl').textContent = `${baseUrl}/health`;
+            document.getElementById('statsUrl').textContent = `${baseUrl}/stats`;
+
+            networkInfoLoaded = true;
+
+        } catch (error) {
+            console.error('Error fetching network info:', error);
+            showMessage('Error fetching network info', 'error');
+        }
+    }
+
 
     async function refreshStats() {
         try {
             const response = await fetch('/stats');
             const data = await response.json();
 
-            // Update counters
+            // Update counts
             document.getElementById('redCount').textContent = data.red_count;
             document.getElementById('blueCount').textContent = data.blue_count;
             document.getElementById('totalCount').textContent = data.total_count;
 
-            // Update system status
+            // Update system state
             currentState = data.system_state;
             updateSystemStatus(data.system_state);
             updateButtonStates();
 
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
         } catch (error) {
             console.error('Error fetching stats:', error);
-            showMessage('Error fetching data', 'error');
         }
     }
+
+    // Auto-refresh stats every 5 seconds
+    setInterval(refreshStats, 5000);
+
+    // Initial load
+    loadNetworkInfo();  // Load network info once
+    refreshStats();     // Load stats
 
     function updateSystemStatus(state) {
         const statusElement = document.getElementById('systemStatus');
