@@ -1,3 +1,5 @@
+import json
+import logging
 import platform
 import socket
 import subprocess
@@ -12,7 +14,16 @@ from enum import Enum
 import uuid
 from collections import defaultdict
 
-app = FastAPI(title="Event Receiver API", version="1.0.0")
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+
+app = FastAPI(title="Event Receiver API", version="1.0.0",debug=True)
 templates = Jinja2Templates(directory="app/templates")
 
 class FighterColor(str, Enum):
@@ -28,7 +39,7 @@ event_counts = defaultdict(int)
 system_state = SystemState.STOPPED
 
 class Event(BaseModel):
-    fighter_color: FighterColor = Field(..., alias="fighterColor")
+    color: FighterColor = Field(..., alias="color")
     id: Optional[str] = Field(default=None)
     timestamp: Optional[datetime] = Field(default=None)
     score: int = Field(default=0)
@@ -45,7 +56,7 @@ class Event(BaseModel):
 class EventResponse(BaseModel):
     id: str
     timestamp: str
-    fighter_color: str
+    color: str
 
 class HealthResponse(BaseModel):
     status: str
@@ -155,7 +166,26 @@ async def get_stats():
         system_state=system_state.value
     )
 
-@app.post("/event", response_model=EventResponse)
+# Add middleware to log all requests
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Incoming request: {request.method} {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
+
+    # Log request body for POST requests
+    if request.method == "POST":
+        body = await request.body()
+        logger.info(f"Request body: {body}")
+        # Need to replace the body for downstream processing
+        from starlette.requests import Request as StarletteRequest
+        import io
+        request._body = body
+
+    response = await call_next(request)
+    logger.info(f"Response status: {response.status_code}")
+    return response
+
+@app.post("/event")
 async def receive_event(event: Event):
     try:
         # Only count events if system is started
@@ -166,22 +196,86 @@ async def receive_event(event: Event):
             )
 
         # Increment the counter for this fighter color
-        event_counts[event.fighter_color] += 1
+        event_counts[event.color] += 1
 
         # Process the event here
-        print(f"Received event: {event} (Total {event.fighter_color.value}: {event_counts[event.fighter_color]})")
+        print(f"Received event: {event} (Total {event.color.value}: {event_counts[event.color]})")
 
         # Return the event in the expected format
         return EventResponse(
             id=event.id,
             timestamp=event.timestamp.isoformat(),
-            fighter_color=event.fighter_color.value
+            color=event.color.value
         )
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing event: {str(e)}")
+        logger.error(f"❌ Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/event_debug")
+async def debug_event(request: Request):
+    logger.info("=== DEBUG EVENT ENDPOINT ===")
+
+    # Log request details
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Content-Type: {request.headers.get('content-type', 'NOT SET')}")
+
+    try:
+        # Get raw body
+        raw_body = await request.body()
+        logger.info(f"Raw body bytes: {raw_body}")
+        logger.info(f"Raw body string: {raw_body.decode('utf-8')}")
+
+        # Try to parse as JSON
+        try:
+            json_data = json.loads(raw_body)
+            logger.info(f"Parsed JSON successfully: {json_data}")
+            logger.info(f"JSON type: {type(json_data)}")
+
+            # Log each field
+            for key, value in json_data.items():
+                logger.info(f"Field '{key}': {value} (type: {type(value)})")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON: {e}")
+            return {
+                "error": "Invalid JSON",
+                "raw_body": raw_body.decode('utf-8'),
+                "json_error": str(e)
+            }
+
+        # Try to convert to Event model
+        try:
+            event = Event(**json_data)
+            logger.info(f"✅ Successfully created Event: {event}")
+            logger.info(f"Event team: {event.color}")
+            logger.info(f"Event timestamp: {event.timestamp}")
+            logger.info(f"Event ID: {event.id}")
+
+            return {
+                "status": "success",
+                "message": "Valid event format",
+                "parsed_event": event.dict(),
+                "raw_json": json_data
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Pydantic validation failed: {e}")
+
+            return {
+                "status": "validation_error",
+                "message": "Invalid event format",
+                "raw_json": json_data,
+                "expected_format": {
+                    "team": "RED or BLUE",
+                    "id": "optional string",
+                    "timestamp": "optional ISO datetime"
+                }
+            }
+
+    finally:
+        logger.info("=== DEBUG EVENT COMPLETE ===")
 @app.post("/start", response_model=StateResponse)
 async def start_system():
     global system_state
