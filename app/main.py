@@ -3,7 +3,7 @@ import logging
 import platform
 import socket
 import subprocess
-from typing import Optional
+from typing import Optional, Dict, Set
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -37,6 +37,7 @@ class SystemState(str, Enum):
 # Global state
 event_counts = defaultdict(int)
 system_state = SystemState.STOPPED
+registered_sources: Dict[str, Set[str]] = defaultdict(set)  # color -> set of IPs
 
 class Event(BaseModel):
     color: FighterColor = Field(..., alias="color")
@@ -186,14 +187,36 @@ async def log_requests(request: Request, call_next):
     return response
 
 @app.post("/event")
-async def receive_event(event: Event):
+async def receive_event(request: Request):
+    global system_state, registered_sources
     try:
-        # Only count events if system is started
+        # Get client IP
+        client_ip = request.client.host
+        logger.info(f"Request from IP: {client_ip}")
+
+        # Parse the event
+        body = await request.body()
+        json_data = json.loads(body)
+        event = Event(**json_data)
+
+        color = event.color.value  # Get string value of enum
+
+        # If server not started, register the source
         if system_state == SystemState.STOPPED:
+            registered_sources[color].add(client_ip)
+            logger.info(f"🔒 Server not started. Registered {client_ip} for color {color}")
+            logger.info(f"Current registered sources: {dict(registered_sources)}")
+            return {"status": "registered", "message": f"Source {client_ip} registered for {color}"}
+
+        # Server is started - check if source is registered
+        if client_ip not in registered_sources[color]:
+            logger.warning(f"❌ Unauthorized source {client_ip} for color {color}")
             raise HTTPException(
-                status_code=400,
-                detail="System is stopped. Events are not being counted. Please start the system first."
+                status_code=403,
+                detail=f"Source {client_ip} not registered for color {color}"
             )
+
+        logger.info(f"✅ Authorized event from {client_ip}: {event}")
 
         # Increment the counter for this fighter color
         event_counts[event.color] += 1
@@ -208,8 +231,9 @@ async def receive_event(event: Event):
             color=event.color.value
         )
     except Exception as e:
-        logger.error(f"❌ Unexpected error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ Error: {e}")
+        raise
+
 
 @app.post("/start", response_model=StateResponse)
 async def start_system():
