@@ -146,6 +146,24 @@
     </div>
 
     <div class="card">
+        <h2>Registered Sources</h2>
+        <div class="sources-grid">
+            <div class="source-card red-sources">
+                <h3>🔴 Red Fighter Sources</h3>
+                <div id="redSources" class="source-list">
+                    <div class="no-sources">No registered sources</div>
+                </div>
+            </div>
+            <div class="source-card blue-sources">
+                <h3>🔵 Blue Fighter Sources</h3>
+                <div id="blueSources" class="source-list">
+                    <div class="no-sources">No registered sources</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
         <h2>Event Statistics</h2>
         <div class="stats-grid">
             <div class="stat-card red-fighter">
@@ -212,11 +230,41 @@
             currentState = data.system_state;
             updateSystemStatus(data.system_state);
             updateButtonStates();
+            // Update registered sources
+            updateRegisteredSources(data.registered_data || {});
 
-            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+            //document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
 
         } catch (error) {
             console.error('Error fetching stats:', error);
+        }
+    }
+
+    function updateRegisteredSources(registeredSources) {
+        // Update Red sources
+        console.log("update registered sources")
+        console.log(registeredSources)
+        const redSourcesDiv = document.getElementById('redSources');
+        const redSources = registeredSources.RED || [];
+
+        if (redSources.length === 0) {
+            redSourcesDiv.innerHTML = '<div class="no-sources">No registered sources</div>';
+        } else {
+            redSourcesDiv.innerHTML = redSources.map(ip =>
+                `<div class="source-item red">📱 ${ip}</div>`
+            ).join('');
+        }
+
+        // Update Blue sources
+        const blueSourcesDiv = document.getElementById('blueSources');
+        const blueSources = registeredSources.BLUE || [];
+
+        if (blueSources.length === 0) {
+            blueSourcesDiv.innerHTML = '<div class="no-sources">No registered sources</div>';
+        } else {
+            blueSourcesDiv.innerHTML = blueSources.map(ip =>
+                `<div class="source-item blue">📱 ${ip}</div>`
+            ).join('');
         }
     }
 

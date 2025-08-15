@@ -16,7 +16,7 @@ poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 curl -X POST "http://localhost:8000/event" \
   -H "Content-Type: application/json" \
   -d '{
-    "fighterColor": "RED",
+    "color": "RED",
     "score": 5,
     "sendBy": "referee1"
   }'
@@ -26,7 +26,7 @@ curl -X POST "http://localhost:8000/event" \
 curl -X POST "http://localhost:8000/event" \
   -H "Content-Type: application/json" \
   -d '{
-    "fighterColor": "BLUE",
+    "color": "BLUE",
     "score": 3,
     "sendBy": "judge2"
   }'

@@ -68,6 +68,8 @@ class StatsResponse(BaseModel):
     blue_count: int
     total_count: int
     system_state: str
+    registered_data: Dict
+
 
 class StateResponse(BaseModel):
     system_state: str
@@ -145,11 +147,7 @@ class NetworkInfo(BaseModel):
     hostname: str
     port: int = 8000
 
-class StatsResponse(BaseModel):
-    red_count: int
-    blue_count: int
-    total_count: int
-    system_state: str
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
@@ -160,11 +158,19 @@ async def health():
 
 @app.get("/stats", response_model=StatsResponse)
 async def get_stats():
+    global registered_sources
+    # Convert registered_sources sets to lists for JSON serialization
+    registered_data = {}
+    for color, ips in registered_sources.items():
+        registered_data[color] = list(ips)
+
+    logger.info(f"Current registered sources: {dict(registered_data)}")
     return StatsResponse(
         red_count=event_counts[FighterColor.RED],
         blue_count=event_counts[FighterColor.BLUE],
         total_count=sum(event_counts.values()),
-        system_state=system_state.value
+        system_state=system_state.value,
+        registered_data=registered_data  # Add this line
     )
 
 # Add middleware to log all requests
