@@ -5,6 +5,75 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fighter Events Dashboard</title>
     <style>
+        .response-time-info {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .current-response-time {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+        }
+
+        .label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .response-time-value {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        .response-time-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        #responseTimeInput {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            width: 200px;
+        }
+
+        #responseTimeInput:focus {
+            outline: none;
+            border-color: #2196F3;
+        }
+
+        .btn-config {
+            background-color: #9C27B0;
+            color: white;
+        }
+
+        .response-time-description {
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 600px) {
+            .response-time-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            #responseTimeInput {
+                width: 100%;
+            }
+        }
+
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -146,6 +215,25 @@
     </div>
 
     <div class="card">
+        <div class="card">
+            <h2>Response Time Configuration</h2>
+            <div class="response-time-info">
+                <div class="current-response-time">
+                    <span class="label">Current Response Time:</span>
+                    <span id="currentResponseTime" class="response-time-value">1000ms</span>
+                </div>
+                <div class="response-time-controls">
+                    <input type="number" id="responseTimeInput" min="100" step="100" placeholder="Response time (ms)" value="1000">
+                    <button class="btn btn-config" onclick="updateResponseTime()">Update Response Time</button>
+                </div>
+                <div class="response-time-description">
+                    <small>All registered sources must send events within this time window for the count to increment.</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+
         <h2>Registered Sources</h2>
         <div class="sources-grid">
             <div class="source-card red-sources">
@@ -233,10 +321,59 @@
             // Update registered sources
             updateRegisteredSources(data.registered_data || {});
 
+            // Update response time
+            await updateResponseTimeDisplay();
             //document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
 
         } catch (error) {
             console.error('Error fetching stats:', error);
+        }
+    }
+
+    async function updateResponseTimeDisplay() {
+        try {
+            const response = await fetch('/config/response-time');
+            const data = await response.json();
+
+            document.getElementById('currentResponseTime').textContent = `${data.response_time_ms}ms`;
+            document.getElementById('responseTimeInput').value = data.response_time_ms;
+        } catch (error) {
+            console.error('Error fetching response time:', error);
+        }
+    }
+
+    async function updateResponseTime() {
+        const input = document.getElementById('responseTimeInput');
+        const newResponseTime = parseInt(input.value);
+
+        if (newResponseTime < 100) {
+            showMessage('Response time must be at least 100ms', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/config/response-time', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    response_time_ms: newResponseTime
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage(data.message, 'success');
+                await updateResponseTimeDisplay();
+            } else {
+                showMessage(data.detail || 'Failed to update response time', 'error');
+            }
+
+        } catch (error) {
+            console.error('Error updating response time:', error);
+            showMessage('Error updating response time', 'error');
         }
     }
 
