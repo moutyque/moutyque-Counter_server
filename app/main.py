@@ -3,7 +3,8 @@ import logging
 import platform
 import socket
 import subprocess
-from typing import Optional, Dict, Set
+import time
+from typing import Optional, Dict, Set, List
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -38,6 +39,9 @@ class SystemState(str, Enum):
 event_counts = defaultdict(int)
 system_state = SystemState.STOPPED
 registered_sources: Dict[str, Set[str]] = defaultdict(set)  # color -> set of IPs
+# Global state
+response_time_ms = 1000  # Default 1 second
+pending_events: Dict[str, List[tuple]] = defaultdict(list)  # color -> [(ip, timestamp, event)]
 
 class Event(BaseModel):
     color: FighterColor = Field(..., alias="color")
@@ -192,6 +196,22 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Response status: {response.status_code}")
     return response
 
+class ResponseTimeConfig(BaseModel):
+    response_time_ms: int
+
+@app.post("/config/response-time")
+async def set_response_time(config: ResponseTimeConfig):
+    global response_time_ms
+    if config.response_time_ms < 100:
+        raise HTTPException(status_code=400, detail="Response time must be at least 100ms")
+
+    response_time_ms = config.response_time_ms
+    logger.info(f"Response time set to {response_time_ms}ms")
+    return {"response_time_ms": response_time_ms, "message": "Response time updated"}
+
+@app.get("/config/response-time")
+async def get_response_time():
+    return {"response_time_ms": response_time_ms}
 @app.post("/event")
 async def receive_event(request: Request):
     global system_state, registered_sources
@@ -225,7 +245,7 @@ async def receive_event(request: Request):
         logger.info(f"✅ Authorized event from {client_ip}: {event}")
 
         # Increment the counter for this fighter color
-        event_counts[event.color] += 1
+        handle_event(event,client_ip)
 
         # Process the event here
         print(f"Received event: {event} (Total {event.color.value}: {event_counts[event.color]})")
@@ -239,6 +259,53 @@ async def receive_event(request: Request):
     except Exception as e:
         logger.error(f"❌ Error: {e}")
         raise
+
+def handle_event(event: Event, client_ip: str):
+    global event_counts, registered_sources, pending_events, response_time_ms
+
+    color = event.color.value
+    current_time = time.time() * 1000  # Convert to milliseconds
+
+    # Get all registered sources for this color
+    required_sources = registered_sources.get(color, set())
+
+    if not required_sources:
+        logger.warning(f"No registered sources for color {color}")
+        return False
+
+    # Add this event to pending events
+    pending_events[color].append((client_ip, current_time, event))
+    logger.info(f"Added event from {client_ip} for {color}. Pending: {len(pending_events[color])}")
+
+    # Clean up old pending events (outside response time window)
+    cutoff_time = current_time - response_time_ms
+    pending_events[color] = [
+        (ip, timestamp, evt) for ip, timestamp, evt in pending_events[color]
+        if timestamp > cutoff_time
+    ]
+
+    # Check if we have events from all required sources within the time window
+    recent_sources = set()
+    for ip, timestamp, evt in pending_events[color]:
+        if timestamp > cutoff_time:
+            recent_sources.add(ip)
+
+    logger.info(f"Recent sources for {color}: {recent_sources}")
+    logger.info(f"Required sources for {color}: {required_sources}")
+
+    # If all required sources have sent events within response time
+    if required_sources.issubset(recent_sources):
+        # Increment counter
+        event_counts[event.color] += 1
+        logger.info(f"🎉 All sources responded for {color}! Count incremented to {event_counts[event.color]}")
+
+        # Clear pending events for this color (reset the window)
+        pending_events[color].clear()
+        return True
+    else:
+        missing_sources = required_sources - recent_sources
+        logger.info(f"⏳ Waiting for sources {missing_sources} for {color} (Response window: {response_time_ms}ms)")
+        return False
 
 
 @app.post("/start", response_model=StateResponse)
