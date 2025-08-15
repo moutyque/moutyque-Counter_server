@@ -9,6 +9,7 @@ from typing import Optional, Dict, Set, List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from enum import Enum
@@ -25,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Event Receiver API", version="1.0.0",debug=True)
+# Mount static files - adjust the directory path to match your structure
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 class FighterColor(str, Enum):
