@@ -186,7 +186,6 @@ async def get_stats():
     for color, ips in registered_sources.items():
         registered_data[color] = list(ips)
 
-    logger.info(f"Current registered sources: {dict(registered_data)}")
     return StatsResponse(
         red_count=event_counts[FighterColor.RED],
         blue_count=event_counts[FighterColor.BLUE],
@@ -196,7 +195,7 @@ async def get_stats():
     )
 
 # Add middleware to log all requests
-@app.middleware("http")
+#@app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger.info(f"Incoming request: {request.method} {request.url}")
     logger.info(f"Headers: {dict(request.headers)}")
