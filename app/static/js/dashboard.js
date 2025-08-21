@@ -210,7 +210,7 @@ function showMessage(message, type) {
 }
 
 // Auto-refresh every 5 seconds
-setInterval(refreshStats, 5000);
+setInterval(refreshStats, 500);
 
 // Initial load
 refreshStats();
