@@ -3,7 +3,9 @@ import logging
 import platform
 import socket
 import subprocess
+import sys
 import time
+from pathlib import Path
 from typing import Optional, Dict, Set, List
 
 from fastapi import FastAPI, HTTPException, Request
@@ -26,6 +28,19 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Event Receiver API", version="1.0.0",debug=True)
+
+# Handle paths for both development and executable
+if getattr(sys, 'frozen', False):
+    # Running as executable
+    base_dir = Path(sys._MEIPASS) / 'app'
+    static_dir = base_dir / 'static'
+    templates_dir = base_dir / 'templates'
+else:
+    # Running as development
+    base_dir = Path(__file__).parent
+    static_dir = base_dir / 'static'
+    templates_dir = base_dir / 'templates'
+
 # Mount static files - adjust the directory path to match your structure
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
